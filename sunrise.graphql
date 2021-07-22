@@ -1,0 +1,142 @@
+type SunriseSunset {
+  sunrise: String!
+  sunset: String!
+  solar_noon: String!
+  day_length: String!
+  civil_twilight_begin: String!
+  civil_twilight_end: String!
+  nautical_twilight_begin: String!
+  nautical_twilight_end: String!
+  astronomical_twilight_begin: String!
+  astronomical_twilight_end: String!
+  sunrise_unix: Int
+  sunset_unix: Int
+  abbreviation: String
+}
+
+type SunriseSunsetFoo {
+  sunrise: String!
+  sunset: String!
+  solar_noon: String!
+  day_length: String!
+  civil_twilight_begin: String!
+  civil_twilight_end: String!
+  nautical_twilight_begin: String!
+  nautical_twilight_end: String!
+  astronomical_twilight_begin: String!
+  astronomical_twilight_end: String!
+  sunrise_unix: Int
+  sunset_unix: Int
+}
+
+type Geolocation {
+  ip_address: String!
+  city: String
+  city_geoname_id: Int
+  region: String
+  region_iso_code: String
+  region_geoname_id: Int
+  postal_code: String
+  country: String
+  country_code: String
+  country_geoname_id: Int
+  country_is_eu: Boolean
+  continent: String
+  continent_code: String
+  continent_geoname_id: Int
+  longitude: Float
+  latitude: Float
+  abbreviation: String
+}
+
+type Timezone {
+  countryCode: String
+  countryName: String
+  zoneName: String!
+  abbreviation: String
+  gmtOffset: Int!
+  dst: Int
+  zoneStart: Int
+  zoneEnd: Int
+  nextAbbreviation: String
+  timestamp: Int
+  timestring: String
+  formatted: Date
+}
+
+type Query {
+  getSunriseByIp(ip_address: String!): SunriseSunset
+    @sequence(
+      steps: [
+        { query: "getLocationByIpAddress" }
+        { query: "getTimezoneByLatLong" }
+        { query: "getSunriseByLatLong" }
+        { query: "collectSunrise" }
+      ]
+    )
+
+  getLocationByIpAddress(ip_address: String!): Geolocation
+    @rest(
+      endpoint: "https://ipgeolocation.abstractapi.com/v1/?api_key=$api_key&ip_address=$ip_address"
+      configuration: "abstractapi_config"
+    )
+    
+  getTimezoneByLatLong(latitude: Float!, longitude: Float!): Timezone
+    @rest(
+      endpoint: "http://api.timezonedb.com/v2.1/get-time-zone?format=json&key=$api_key&by=position&lat=$latitude&lng=$longitude"
+      configuration: "timezone_config"
+    )
+
+  getSunriseByLatLong(latitude: Float!, longitude: Float!): SunriseSunsetFoo
+    @rest(
+      endpoint: "https://api.sunrise-sunset.org/json?lat=$latitude&lng=$longitude"
+      resultroot: "results"
+      cel: """
+      function transformREST(json)
+      {
+          let data = JSON.parse(json)
+          let today = new Date()
+          let today_string = today.getFullYear()+'-'+('0' + (today.getMonth() + 1)).slice(-2)+'-'+today.getDate()
+          // sunrise
+          let sunrise_hour = data.results.sunrise.split(':')[0]
+          if (data.results.sunrise.split(-2) == 'PM')
+            sunrise_hour = sunrise_hour + 12;
+          let sunrise_minute = data.results.sunrise.split(':')[1]
+          let sunrise_seconds = data.results.sunrise.split(':')[2].slice(0,2)
+          let sunrise = today_string+'T'+sunrise_hour+':'+sunrise_minute+':'+sunrise_seconds+'+00:00'
+          let sunrise_dt = new Date(sunrise)
+          // sunset
+          let sunset_hour = data.results.sunset.split(':')[0]
+          if (data.results.sunset.split(-2) == 'PM')
+            sunset_hour = sunset_hour + 12;
+          let sunset_minute = data.results.sunset.split(':')[1]
+          let sunset_seconds = data.results.sunset.split(':')[2].slice(0,2)
+          let sunset = today_string+'T'+sunset_hour+':'+sunset_minute+':'+sunset_seconds+'+00:00'
+          let sunset_dt = new Date(sunset)
+
+          data.results.sunrise_unix = sunrise_dt.getTime()/1000
+          data.results.sunset_unix = sunset_dt.getTime()/1000
+          return JSON.stringify(data)
+      }
+      """
+    )
+
+  collectSunrise(
+    sunrise: String!
+    sunset: String!
+    solar_noon: String!
+    day_length: String!
+    civil_twilight_begin: String!
+    civil_twilight_end: String!
+    nautical_twilight_begin: String!
+    nautical_twilight_end: String!
+    astronomical_twilight_begin: String!
+    astronomical_twilight_end: String!
+    sunrise_unix: Int
+    sunrise_local: String
+    sunset_unix: Int
+    sunset_local: String
+    abbreviation: String
+  ): SunriseSunset
+    @connector(type: "echo")
+}
